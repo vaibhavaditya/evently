@@ -93,7 +93,23 @@ services:
       retries: 10
       start_period: 20s
 
+  evt-core-service:
+    build:
+      context: ./evt-core-service
 
+    container_name: evently-core-service
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/evently
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+    depends_on:
+      postgres:
+        condition: service_healthy
 volumes:
   postgres_data:
   mongo_data:
