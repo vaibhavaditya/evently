@@ -1,16 +1,25 @@
+# Maven
+target/
+**/target/
+
 # IntelliJ
 .idea/
 *.iml
 
-# Maven build output
-target/
+# Eclipse
+.classpath
+.project
+.settings/
 
-# Environment variables / secrets
-.env
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
 
-# OS files
-.DS_Store
-Thumbs.db
+# Environment / secrets
+.env

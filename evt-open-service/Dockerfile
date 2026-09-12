@@ -7,15 +7,15 @@ WORKDIR /app
 COPY evt-grpc-contracts/pom.xml evt-grpc-contracts/pom.xml
 COPY evt-grpc-contracts/src evt-grpc-contracts/src
 
-# Install gRPC contracts into local Maven repository
+# Install gRPC contracts
 RUN mvn -f evt-grpc-contracts/pom.xml clean install -DskipTests
 
-# Copy Core Service
-COPY evt-core-service/pom.xml evt-core-service/pom.xml
-COPY evt-core-service/src evt-core-service/src
+# Copy Open Service
+COPY evt-open-service/pom.xml evt-open-service/pom.xml
+COPY evt-open-service/src evt-open-service/src
 
-# Build Core Service
-RUN mvn -f evt-core-service/pom.xml clean package -DskipTests
+# Build Open Service
+RUN mvn -f evt-open-service/pom.xml clean package -DskipTests
 
 
 # ---------- RUN ----------
@@ -23,8 +23,8 @@ FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-COPY --from=build /app/evt-core-service/target/*.jar app.jar
+COPY --from=build /app/evt-open-service/target/*.jar app.jar
 
-EXPOSE 9090
+EXPOSE 8081
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

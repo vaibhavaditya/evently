@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package evently.event;
+
+option java_multiple_files = true;
+option java_package = "com.evently.grpc";
+option java_outer_classname = "EventProto";
+
+import "google/protobuf/timestamp.proto";
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum EventCategory {
+  EVENT_CATEGORY_UNSPECIFIED = 0;
+  MUSIC = 1;
+  SPORTS = 2;
+  COMEDY = 3;
+  WORKSHOP = 4;
+  OTHER = 5;
+}
+
+enum EventStatus {
+  EVENT_STATUS_UNSPECIFIED = 0;
+  DRAFT = 1;
+  PUBLISHED = 2;
+  CANCELLED = 3;
+  SOLD_OUT = 4;
+}
+
+// =====================================================
+// EVENT
+// Based on EventDTO / EventResponse
+// =====================================================
+
+message Event {
+  string id = 1;
+  string event_name = 2;
+  string organizer_name = 3;
+  string organizer_mobile = 4;
+  string city = 5;
+  EventCategory category = 6;
+  EventStatus status = 7;
+  google.protobuf.Timestamp created_on = 8;
+  google.protobuf.Timestamp modified_on = 9;
+}
+
+// =====================================================
+// CREATE EVENT
+// Based on EventRequest
+// =====================================================
+
+message CreateEventRequest {
+  string event_name = 1;
+  string organizer_name = 2;
+  string organizer_mobile = 3;
+  string city = 4;
+  EventCategory category = 5;
+}
+
+message CreateEventResponse {
+  Event event = 1;
+}
+
+// =====================================================
+// GET EVENT
+// Based on getEventById()
+// =====================================================
+
+message GetEventRequest {
+  string id = 1;
+}
+
+message GetEventResponse {
+  Event event = 1;
+}
+
+// =====================================================
+// LIST EVENTS
+// Based on EventListResponse + EventController filters
+// =====================================================
+
+message ListEventsRequest {
+  string city = 1;
+  EventCategory category = 2;
+  EventStatus status = 3;
+  int32 page = 4;
+  int32 size = 5;
+}
+
+message ListEventsResponse {
+  repeated Event events = 1;
+  int64 total_elements = 2;
+  int32 total_pages = 3;
+}
+
+// =====================================================
+// UPDATE EVENT STATUS
+// Based on StatusUpdateRequest
+// =====================================================
+
+message UpdateEventStatusRequest {
+  string id = 1;
+  EventStatus status = 2;
+}
+
+message UpdateEventStatusResponse {
+  Event event = 1;
+}
+
+// =====================================================
+// EVENT STATISTICS
+// Based on EventStatsResponse
+// =====================================================
+
+message GetEventStatsRequest {
+}
+
+message StatusCount {
+  EventStatus status = 1;
+  int64 count = 2;
+}
+
+message CategoryCount {
+  EventCategory category = 1;
+  int64 count = 2;
+}
+
+message GetEventStatsResponse {
+  int64 total_events = 1;
+  repeated StatusCount by_status = 2;
+  repeated CategoryCount by_category = 3;
+}
+
+// =====================================================
+// gRPC SERVICE
+// =====================================================
+
+service EventService {
+
+  rpc CreateEvent(CreateEventRequest)
+      returns (CreateEventResponse);
+
+  rpc GetEvent(GetEventRequest)
+      returns (GetEventResponse);
+
+  rpc ListEvents(ListEventsRequest)
+      returns (ListEventsResponse);
+
+  rpc UpdateEventStatus(UpdateEventStatusRequest)
+      returns (UpdateEventStatusResponse);
+
+  rpc GetEventStats(GetEventStatsRequest)
+      returns (GetEventStatsResponse);
+}

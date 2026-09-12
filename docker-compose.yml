@@ -33,7 +33,8 @@ services:
       - mongo_data:/data/db
 
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -93,14 +94,20 @@ services:
       retries: 10
       start_period: 20s
 
+
+  # =========================
+  # CORE SERVICE
+  # =========================
+
   evt-core-service:
     build:
-      context: ./evt-core-service
+      context: .
+      dockerfile: evt-core-service/Dockerfile
 
     container_name: evently-core-service
 
     ports:
-      - "8080:8080"
+      - "9090:9090"
 
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/evently
@@ -110,6 +117,53 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+
+  # =========================
+  # OPEN SERVICE
+  # =========================
+
+  evt-open-service:
+    build:
+      context: .
+      dockerfile: evt-open-service/Dockerfile
+
+    container_name: evently-open-service
+
+    ports:
+      - "8081:8081"
+
+    environment:
+      EVENT_CORE_GRPC_HOST: evt-core-service
+      EVENT_CORE_GRPC_PORT: 9090
+
+    depends_on:
+      evt-core-service:
+        condition: service_started
+
+
+  # =========================
+  # BFF
+  # =========================
+
+  evt-bff:
+    build:
+      context: .
+      dockerfile: evt-bff/Dockerfile
+
+    container_name: evently-bff
+
+    ports:
+      - "8082:8082"
+
+    environment:
+      EVENT_OPEN_SERVICE_URL: http://evt-open-service:8081
+
+    depends_on:
+      evt-open-service:
+        condition: service_started
+
+
 volumes:
   postgres_data:
   mongo_data:

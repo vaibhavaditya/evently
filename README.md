@@ -203,3 +203,81 @@ Request B ──┘
           ↓       ↓
         A ✅      B ❌
                  409
+
+## Phase 2 Self-Checks
+
+### Why use gRPC between internal services but REST at the edge?
+
+The BFF is the entry point for external clients, so it exposes REST APIs using
+HTTP and JSON. REST is simple and widely supported by clients, browsers,
+Postman, cURL, and mobile applications.
+
+For internal service-to-service communication, `evt-open-service` communicates
+with `evt-core-service` using gRPC and Protobuf. gRPC provides a strongly typed
+contract and efficient binary communication.
+
+The architecture is:
+
+Client
+|
+| REST / HTTP + JSON
+v
+evt-bff
+|
+| REST / HTTP
+v
+evt-open-service
+|
+| gRPC / Protobuf
+v
+evt-core-service
+|
+v
+PostgreSQL
+
+
+### What breaks if the proto file adds a field?
+
+The `.proto` file is used to generate the Java Protobuf and gRPC classes used
+by the services.
+
+If a field is added to the proto, the `event-grpc-contracts` module must be
+rebuilt so that the generated classes contain the new field.
+
+The services that depend directly on the generated gRPC contract,
+`evt-open-service` and `evt-core-service`, then need to be rebuilt.
+
+The BFF does not need to be rebuilt just because an internal gRPC field was
+added because it communicates with `evt-open-service` through HTTP rather than
+using the gRPC contract directly.
+
+The shared `event-grpc-contracts` module provides a single source of truth for
+the internal API contract. Both Open Service and Core Service use the same
+generated classes, preventing the services from maintaining separate or
+inconsistent proto definitions.
+
+
+### If Open Service is down, what does the BFF return today?
+
+When Open Service returns an HTTP error such as 400, 404, or 500, the Feign
+`FeignErrorDecoder` converts the response into an `OpenServiceException`.
+The BFF's `GlobalExceptionHandler` then returns the corresponding HTTP status.
+
+However, if Open Service is completely down, there is no HTTP response to
+decode. Feign encounters a connection failure, which is not currently handled
+by our `OpenServiceException` handler. Therefore, the BFF can currently return
+a generic 500 Internal Server Error.
+
+Ideally, the BFF should return:
+
+HTTP 503 Service Unavailable
+
+with a response such as:
+
+{
+"success": false,
+"message": "Event open service is currently unavailable"
+}
+
+A 503 is more appropriate because the BFF is available but one of its
+downstream services is unavailable.
