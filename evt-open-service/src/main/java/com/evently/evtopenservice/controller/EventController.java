@@ -2,6 +2,8 @@ package com.evently.evtopenservice.controller;
 
 import com.evently.evtopenservice.dto.*;
 import com.evently.evtopenservice.grpc.EventGrpcClient;
+import com.evently.evtopenservice.kafka.EventType;
+import com.evently.evtopenservice.kafka.KafkaEventProducer;
 import com.evently.evtopenservice.mapper.CreateEventMapper;
 import com.evently.evtopenservice.mapper.EventMapper;
 import com.evently.evtopenservice.mapper.EventStatsResponseMapper;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class EventController {
     private final EventGrpcClient eventGrpcClient;
+    private final KafkaEventProducer kafkaEventProducer;
 
     @PostMapping
     public ResponseEntity<EventHttpResponse> createEvent(
@@ -28,6 +31,11 @@ public class EventController {
 
         CreateEventResponse grpcResponse =
                 eventGrpcClient.createEvent(grpcRequest);
+
+        kafkaEventProducer.publishEvent(
+                grpcResponse.getEvent(),
+                EventType.EVENT_PUBLISHED
+        );
 
         EventHttpResponse httpResponse =
                 EventMapper.toHttp(grpcResponse.getEvent());
@@ -108,6 +116,11 @@ public class EventController {
 
         UpdateEventStatusResponse grpcResponse =
                 eventGrpcClient.updateEventStatus(grpcRequest);
+
+        kafkaEventProducer.publishEvent(
+                grpcResponse.getEvent(),
+                EventType.EVENT_STATUS_CHANGED
+        );
 
         EventHttpResponse httpResponse =
                 EventMapper.toHttp(grpcResponse.getEvent());

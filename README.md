@@ -281,3 +281,385 @@ with a response such as:
 
 A 503 is more appropriate because the BFF is available but one of its
 downstream services is unavailable.
+
+---
+
+# Phase 3 — Kafka + Notification Service + MongoDB
+
+## Kafka Flow
+
+After a successful event creation or status update, `evt-open-service`
+publishes an event to Kafka.
+
+The flow is:
+
+```text
+evt-open-service
+       |
+       | Kafka
+       v
+Kafka
+       |
+       | @KafkaListener
+       v
+evt-notification-service
+       |
+       +------> EventNotification
+       |
+       +------> CityDashboard
+                    |
+                    v
+                 MongoDB
+
+
+# Kafka Consumer & Dashboard Design
+
+## Your consumer crashes after writing to Mongo but before ACK. What happens on restart, and which line of your code saves you?
+
+Kafka provides **at-least-once delivery**.
+
+Suppose the following happens:
+
+```text
+Kafka sends message
+       ↓
+Notification service receives message
+       ↓
+MongoDB write succeeds
+       ↓
+Consumer crashes
+       ↓
+ACK was never sent
+```
+
+Because the message was not acknowledged, Kafka can **redeliver the message** after the consumer restarts.
+
+Our **idempotency check** prevents the same Kafka message from being inserted again:
+
+```kotlin
+if (repository.findByEventId(eventId).isPresent()) {
+    return false
+}
+```
+
+The important line is:
+
+```kotlin
+repository.findByEventId(eventId)
+```
+
+It checks whether the Kafka message has already been processed.
+
+In our message structure:
+
+```text
+eventId  = unique Kafka message ID
+entityId = actual Event ID
+```
+
+Therefore, after redelivery:
+
+```text
+Redelivered Kafka message
+        ↓
+Check eventId
+        ↓
+eventId already exists in MongoDB
+        ↓
+Skip duplicate processing
+```
+
+This makes the consumer **idempotent**.
+
+---
+
+## Why is the dashboard a pre-computed document instead of a Mongo aggregation / GROUP BY at read time? When would the aggregation approach fall over?
+
+The notification service maintains a pre-computed `CityDashboard` document for each city.
+
+For example:
+
+```text
+Mumbai
+ |
+ +-- totalEvents: 2
+ +-- publishedEvents: 2
+ +-- cancelledEvents: 0
+ +-- soldOutEvents: 0
+ |
+ +-- eventsByCategory
+       |
+       +-- MUSIC: 1
+       +-- COMEDY: 1
+```
+
+When the client requests:
+
+```http
+GET /v1/dashboard/Mumbai
+```
+
+MongoDB can directly retrieve the document using:
+
+```text
+repository.findById(city);
+```
+
+There is no need to scan and aggregate all notification documents for every dashboard request.
+
+The calculation happens when Kafka messages are consumed:
+
+```text
+Kafka message
+     ↓
+Notification Service
+     ↓
+Update CityDashboard
+     ↓
+MongoDB
+```
+
+### Why not aggregate at read time?
+
+If we used MongoDB aggregation at read time, every dashboard request would need to perform operations such as:
+
+- Filtering
+- Grouping
+- Counting
+- Calculating category totals
+- Calculating status totals
+
+As the number of notification documents and dashboard requests grows, repeatedly performing those aggregations can increase:
+
+- Database CPU usage
+- Database I/O
+- Query latency
+
+The **pre-computed document** moves the calculation to the event-processing side and makes dashboard reads a simple:
+
+```text
+findById(city)
+```
+
+operation.
+
+### Trade-off
+
+The trade-off is that the dashboard must be updated correctly whenever relevant events are consumed.
+
+In other words:
+
+```text
+Write/processing side
+        ↓
+More work
+        ↓
+Pre-computed dashboard
+        ↓
+Fast reads
+```
+
+This design is useful when dashboards are read frequently but the underlying event data changes less frequently than the dashboard is requested.
+
+---
+
+## Why does the producer write the DB row before publishing to Kafka, and what is the failure mode if you publish first?
+
+PostgreSQL is the **source database** for events.
+
+The intended sequence is:
+
+```text
+PostgreSQL
+    ↓
+Event successfully stored
+    ↓
+Kafka
+    ↓
+Notification Service
+    ↓
+MongoDB
+```
+
+The database write happens before Kafka publishing so Kafka does not announce an event that was never successfully stored in the source database.
+
+### What happens if Kafka is published first?
+
+Consider this sequence:
+
+```text
+Kafka publish succeeds
+        ↓
+PostgreSQL write fails
+```
+
+The notification service could consume and process an event that does not actually exist in PostgreSQL.
+
+That could create inconsistency between:
+
+```text
+PostgreSQL = Source of Truth
+MongoDB    = Read Model
+```
+
+For example:
+
+```text
+Kafka
+ ↓
+EVENT_PUBLISHED
+ ↓
+Notification Service
+ ↓
+MongoDB updated
+```
+
+while:
+
+```text
+PostgreSQL
+ ↓
+Event does not exist
+```
+
+The downstream system would therefore believe an event exists even though the source database does not contain it.
+
+---
+
+### What happens if PostgreSQL succeeds but Kafka fails?
+
+There is also a failure in the opposite direction:
+
+```text
+PostgreSQL write succeeds
+        ↓
+Kafka publish fails
+```
+
+In this case:
+
+```text
+PostgreSQL
+    ↓
+Event exists
+```
+
+but:
+
+```text
+Kafka
+    ↓
+Event was never published
+```
+
+Therefore downstream consumers such as the notification service will not receive the event.
+
+This creates another form of inconsistency:
+
+```text
+PostgreSQL
+   |
+   | Event exists
+   ↓
+Kafka
+   |
+   | Event missing
+   ↓
+MongoDB
+   |
+   | Dashboard not updated
+```
+
+---
+
+## Transactional Outbox Pattern
+
+A common production solution for this type of failure is the **Transactional Outbox Pattern**.
+
+Instead of directly doing:
+
+```text
+Write PostgreSQL
+       ↓
+Publish Kafka
+```
+
+we write both the business data and an outbox event into PostgreSQL within the **same database transaction**:
+
+```text
+                    PostgreSQL
+                        |
+             ┌──────────┴──────────┐
+             ↓                     ↓
+       Event table           Outbox table
+             |                     |
+             └──────────┬──────────┘
+                        |
+                  Same transaction
+                        |
+                        ↓
+                  COMMIT succeeds
+                        |
+                        ↓
+              Outbox Publisher
+                        |
+                        ↓
+                     Kafka
+                        |
+                        ↓
+              Notification Service
+                        |
+                        ↓
+                    MongoDB
+```
+
+For example:
+
+```text
+BEGIN TRANSACTION
+
+INSERT INTO events (...)
+INSERT INTO outbox_events (...)
+
+COMMIT
+```
+
+Both records are committed together.
+
+If the transaction fails:
+
+```text
+Event insert      ❌
+Outbox insert     ❌
+```
+
+Neither record is committed.
+
+If the transaction succeeds:
+
+```text
+Event insert      ✅
+Outbox insert     ✅
+```
+
+The outbox publisher can later read the outbox table and publish the event to Kafka.
+
+This prevents the situation where the event exists in PostgreSQL but the system completely loses the information that it needs to publish to Kafka.
+
+### Key idea
+
+```text
+PostgreSQL transaction
+        ↓
+Event + Outbox record
+        ↓
+Reliable persistence
+        ↓
+Outbox Publisher
+        ↓
+Kafka
+        ↓
+Consumers
+```
+
+The **Transactional Outbox Pattern** therefore provides a reliable bridge between the PostgreSQL database and Kafka without requiring a distributed transaction between PostgreSQL and Kafka.

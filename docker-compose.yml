@@ -63,19 +63,24 @@ services:
 
     ports:
       - "9092:9092"
+      - "29092:29092"
 
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
 
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
 
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
 
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >
-        CONTROLLER:PLAINTEXT,
-        PLAINTEXT:PLAINTEXT
+        INTERNAL:PLAINTEXT,
+        EXTERNAL:PLAINTEXT,
+        CONTROLLER:PLAINTEXT
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
 
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
 
@@ -98,7 +103,6 @@ services:
   # =========================
   # CORE SERVICE
   # =========================
-
   evt-core-service:
     build:
       context: .
@@ -122,7 +126,6 @@ services:
   # =========================
   # OPEN SERVICE
   # =========================
-
   evt-open-service:
     build:
       context: .
@@ -136,6 +139,7 @@ services:
     environment:
       EVENT_CORE_GRPC_HOST: evt-core-service
       EVENT_CORE_GRPC_PORT: 9090
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
     depends_on:
       evt-core-service:
@@ -145,7 +149,6 @@ services:
   # =========================
   # BFF
   # =========================
-
   evt-bff:
     build:
       context: .
@@ -162,6 +165,31 @@ services:
     depends_on:
       evt-open-service:
         condition: service_started
+
+
+  # =========================
+  # NOTIFICATION SERVICE
+  # =========================
+  evt-notification-service:
+    build:
+      context: .
+      dockerfile: evt-notification-service/Dockerfile
+
+    container_name: evently-notification-service
+
+    ports:
+      - "8083:8083"
+
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MONGODB_URI: mongodb://mongo:27017/evently
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+      mongo:
+        condition: service_healthy
 
 
 volumes:
