@@ -1,7 +1,9 @@
+
 package com.evently.evtbff.controller;
 
 import com.evently.evtbff.client.EventOpenClient;
 import com.evently.evtbff.dto.*;
+import com.evently.evtbff.security.RoleRequired;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -15,11 +17,11 @@ public class EventController {
 
     private final EventOpenClient eventOpenClient;
 
-    // CREATE EVENT
+    @RoleRequired("ADMIN")
     @PostMapping
     public ResponseEntity<EventHttpResponse> createEvent(
-            @Valid @RequestBody CreateEventHttpRequest request) {
-
+            @Valid @RequestBody CreateEventHttpRequest request
+    ) {
         EventHttpResponse response =
                 eventOpenClient.createEvent(request);
 
@@ -28,26 +30,24 @@ public class EventController {
                 .body(response);
     }
 
-    // GET EVENT BY ID
     @GetMapping("/{id}")
     public ResponseEntity<EventHttpResponse> getEvent(
-            @PathVariable String id) {
-
+            @PathVariable String id
+    ) {
         EventHttpResponse response =
                 eventOpenClient.getEvent(id);
 
         return ResponseEntity.ok(response);
     }
 
-    // LIST EVENTS
     @GetMapping
     public ResponseEntity<ListEventsHttpResponse> listEvents(
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-
+            @RequestParam(defaultValue = "10") int size
+    ) {
         ListEventsHttpResponse response =
                 eventOpenClient.listEvents(
                         city,
@@ -60,25 +60,21 @@ public class EventController {
         return ResponseEntity.ok(response);
     }
 
-    // UPDATE EVENT STATUS
+    @RoleRequired("ADMIN")
     @PatchMapping("/{id}/status")
     public ResponseEntity<EventHttpResponse> updateEventStatus(
             @PathVariable String id,
-            @Valid @RequestBody UpdateEventStatusHttpRequest request) {
-
+            @Valid @RequestBody UpdateEventStatusHttpRequest request
+    ) {
         EventHttpResponse response =
-                eventOpenClient.updateEventStatus(
-                        id,
-                        request
-                );
+                eventOpenClient.updateEventStatus(id, request);
 
         return ResponseEntity.ok(response);
     }
 
-    // EVENT STATISTICS
+
     @GetMapping("/stats")
     public ResponseEntity<EventStatsHttpResponse> getEventStats() {
-
         EventStatsHttpResponse response =
                 eventOpenClient.getEventStats();
 

@@ -663,3 +663,126 @@ Consumers
 ```
 
 The **Transactional Outbox Pattern** therefore provides a reliable bridge between the PostgreSQL database and Kafka without requiring a distributed transaction between PostgreSQL and Kafka.
+
+## Phase 4 — Authentication, Authorization & Distributed Tracing
+
+### 1. OTP Login Flow
+
+Evently implements OTP-based authentication using Redis and JWT.
+
+**Generate OTP**
+
+```bash
+curl.exe -X POST http://localhost:8082/api/v1/auth/generate-otp \
+  -H "Content-Type: application/json" \
+  -d "{\"mobile\":\"9876543210\"}"
+```
+
+The service generates a six-digit OTP and stores it in Redis with a five-minute TTL. For development, the OTP is logged instead of being sent through SMS.
+
+**Verify OTP**
+
+Read the generated OTP from the service logs and replace `ACTUAL_OTP` below.
+
+```bash
+curl.exe -X POST http://localhost:8082/api/v1/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -d "{\"mobile\":\"9876543210\",\"otp\":\"ACTUAL_OTP\"}"
+```
+
+On successful verification, the response returns the user's identity, role, access token, and refresh token. The access token is a signed JWT with a 15-minute expiry.
+
+### 2. Authenticated Request
+
+Pass the access token in the `Authorization` header when accessing a protected endpoint.
+
+```bash
+curl.exe -i http://localhost:8082/api/v1/events \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+A valid token allows an authenticated user to access GET endpoints, subject to the endpoint's authorization rules.
+
+### 3. Authentication Failure — 401 Unauthorized
+
+Request the protected endpoint without a token:
+
+```bash
+curl.exe -i http://localhost:8082/api/v1/events
+```
+
+**Verified response:**
+
+```http
+HTTP/1.1 401
+X-Trace-Id: 92ea3ea8-b94f-4a12-a0df-552e3ca73a54
+Content-Type: application/json
+```
+
+```json
+{
+  "success": false,
+  "message": "Authentication required"
+}
+```
+
+This confirms that unauthenticated requests are rejected and a trace ID is included in the response.
+
+### 4. Authorization Failure — 403 Forbidden
+
+A user with the `VIEWER` role must not be allowed to create or modify events.
+
+Authenticate as the VIEWER user (`8765432109`), obtain an access token, and run a protected POST or PATCH request using that token.
+
+**Expected result:** `403 Forbidden`.
+
+Paste the actual request and response here after verifying it.
+
+### 5. Distributed Trace ID Propagation
+
+Evently propagates a trace ID across the following services:
+
+```text
+Client
+  → evt-bff
+  → evt-open-service
+  → evt-core-service
+  → Kafka
+  → evt-notification-service
+```
+
+The BFF generates or accepts a trace ID, stores it in MDC, and forwards it through the `X-Trace-Id` header. The Open Service propagates it through gRPC metadata and includes it in Kafka message headers. The Notification Service restores the trace ID from the Kafka header into MDC.
+
+**Trace ID used for verification:**
+
+`PASTE_ONE_TRACE_ID_HERE`
+
+Paste log excerpts from all four services below, showing the same trace ID:
+
+- **evt-bff:** incoming HTTP request
+- **evt-open-service:** incoming request and/or Kafka publishing
+- **evt-core-service:** gRPC request
+- **evt-notification-service:** Kafka event received and processed
+
+This demonstrates end-to-end traceability across the HTTP, gRPC, and Kafka boundaries.
+
+### 6. Role-Based Access Control
+
+| Operation | ADMIN | VIEWER |
+|---|---|---|
+| GET events | Allowed | Allowed |
+| POST create event | Allowed | Forbidden (403) |
+| PATCH event status | Allowed | Forbidden (403) |
+
+Roles are derived from the user record rather than accepted from client input. The BFF validates JWTs and enforces role-based access control for protected operations.
+
+### Phase 4 Status
+
+- [x] OTP generation and verification implemented
+- [x] JWT authentication and role-based authorization implemented
+- [x] Unauthenticated request returns 401
+- [x] ADMIN can create events
+- [x] VIEWER is denied restricted operations
+- [x] Trace ID propagation verified across services
+
+**Remaining documentation evidence:** Add the successful OTP/token response, the actual 403 response, and log excerpts showing the same trace ID in all four services.

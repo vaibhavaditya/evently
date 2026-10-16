@@ -149,6 +149,7 @@ services:
   # =========================
   # BFF
   # =========================
+
   evt-bff:
     build:
       context: .
@@ -161,10 +162,14 @@ services:
 
     environment:
       EVENT_OPEN_SERVICE_URL: http://evt-open-service:8081
-
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
       evt-open-service:
         condition: service_started
+      redis:
+        condition: service_healthy
 
 
   # =========================

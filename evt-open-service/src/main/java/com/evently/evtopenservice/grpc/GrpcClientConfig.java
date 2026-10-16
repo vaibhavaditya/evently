@@ -6,6 +6,7 @@ import io.grpc.ManagedChannelBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import io.grpc.ClientInterceptors;
 
 @Configuration
 public class GrpcClientConfig {
@@ -29,7 +30,14 @@ public class GrpcClientConfig {
     public EventServiceGrpc.EventServiceBlockingStub eventServiceStub(
             ManagedChannel eventCoreChannel) {
 
-        return EventServiceGrpc
-                .newBlockingStub(eventCoreChannel);
+        return EventServiceGrpc.newBlockingStub(
+                ClientInterceptors.intercept(
+                        eventCoreChannel,
+                        new TraceIdClientInterceptor()
+                )
+        );
     }
+
+
+
 }

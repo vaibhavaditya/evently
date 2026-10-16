@@ -1,20 +1,22 @@
-    package com.evently.evtcoreservice.grpc;
 
-    import io.grpc.Server;
-    import io.grpc.ServerBuilder;
-    import io.grpc.protobuf.services.ProtoReflectionServiceV1;
-    import org.springframework.context.annotation.Bean;
-    import org.springframework.context.annotation.Configuration;
+package com.evently.evtcoreservice.grpc;
 
-    @Configuration
-    public class GrpcServerConfig {
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
+import io.grpc.protobuf.services.ProtoReflectionServiceV1;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-        @Bean
-        public Server grpcServer(EventGrpcService eventGrpcService) {
-            return ServerBuilder
-                    .forPort(9090)
-                    .addService(eventGrpcService)
-                    .addService(ProtoReflectionServiceV1.newInstance())
-                    .build();
-        }
+@Configuration
+public class GrpcServerConfig {
+
+    @Bean
+    public Server grpcServer(EventGrpcService eventGrpcService) {
+        return ServerBuilder
+                .forPort(9090)
+                .addService(eventGrpcService)
+                .intercept(new TraceIdServerInterceptor())
+                .addService(ProtoReflectionServiceV1.newInstance())
+                .build();
     }
+}

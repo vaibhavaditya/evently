@@ -5,9 +5,13 @@ import com.evently.evtnotificationservice.notification.NotificationService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
 
 @Component
 @RequiredArgsConstructor
@@ -31,36 +35,57 @@ public class EventKafkaListener {
             containerFactory = "kafkaListenerContainerFactory"
     )
     public void consume(
-            EventMessage message,
+            ConsumerRecord<String, EventMessage> record,
             Acknowledgment acknowledgment
     ) {
+        String traceId = null;
 
-        log.info(
-                "Received Kafka event: eventId={}, eventType={}",
-                message.getEventId(),
-                message.getEventType()
-        );
+        try {
+            // Extract trace ID from Kafka headers
+            var header = record.headers().lastHeader("X-Trace-Id");
 
-        boolean processed =
-                notificationService.processEvent(message);
+            if (header != null) {
+                traceId = new String(
+                        header.value(),
+                        StandardCharsets.UTF_8
+                );
+                MDC.put("traceId", traceId);
 
-        if (processed) {
+                log.info("Trace ID extracted from Kafka header: {}", traceId);
 
-            dashboardService.updateDashboard(message);
+            } else {
+                log.warn("X-Trace-Id header is missing from Kafka message");
+            }
+            EventMessage message = record.value();
 
             log.info(
-                    "Event processed successfully: eventId={}",
-                    message.getEventId()
+                    "Received Kafka event: eventId={}, eventType={}, traceId={}",
+                    message.getEventId(),
+                    message.getEventType(),
+                    traceId
             );
 
-        } else {
+            boolean processed =
+                    notificationService.processEvent(message);
 
-            log.info(
-                    "Duplicate event ignored: eventId={}",
-                    message.getEventId()
-            );
+            if (processed) {
+                dashboardService.updateDashboard(message);
+
+                log.info(
+                        "Event processed successfully: eventId={}",
+                        message.getEventId()
+                );
+            } else {
+                log.info(
+                        "Duplicate event ignored: eventId={}",
+                        message.getEventId()
+                );
+            }
+
+            acknowledgment.acknowledge();
+
+        } finally {
+            MDC.remove("traceId");
         }
-
-        acknowledgment.acknowledge();
     }
 }
