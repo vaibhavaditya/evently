@@ -1,4 +1,4 @@
-package com.evently.evtcoreservice.repository.specification;
+package com.evently.evtcoreservice.repository;
 
 import com.evently.evtcoreservice.entity.Event;
 import com.evently.evtcoreservice.enums.EventCategory;

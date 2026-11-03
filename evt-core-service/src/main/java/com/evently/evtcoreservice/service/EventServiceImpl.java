@@ -14,7 +14,7 @@ import com.evently.evtcoreservice.exception.ConflictException;
 import com.evently.evtcoreservice.exception.ResourceNotFoundException;
 import com.evently.evtcoreservice.mapper.EventMapper;
 import com.evently.evtcoreservice.repository.EventRepository;
-import com.evently.evtcoreservice.repository.specification.EventSpecifications;
+import com.evently.evtcoreservice.repository.EventSpecifications;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;

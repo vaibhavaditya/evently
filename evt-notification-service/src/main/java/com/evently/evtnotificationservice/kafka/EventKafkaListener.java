@@ -66,7 +66,7 @@ public class EventKafkaListener {
             );
 
             boolean processed =
-                    notificationService.processEvent(message);
+                        notificationService.processEvent(message);
 
             if (processed) {
                 dashboardService.updateDashboard(message);
